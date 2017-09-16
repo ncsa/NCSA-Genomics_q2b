@@ -1,6 +1,6 @@
 """ q2b.py - Ryan Chui (2017) """
 
-import Module.Encode as Encode
+import Modules.Encode as Encode
 
 def main():
     """ Either encode or decode a fastq file. """
