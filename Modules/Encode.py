@@ -3,9 +3,20 @@
 Encodes a fastq file to a fastb file.
 """
 
+import os
 import sys
+import pprint
+import multiprocessing
 
-BASES_PER_BYTE = 3
+BYTE_CODE = {
+    'A':'000', # A
+    'C':'001', # C
+    'G':'010', # G
+    'T':'011', # T
+    'N':'101', # Any
+    'I':'111'  # Missing
+}
+BASES_PER_BYTE = 6
 
 def print_dict(input_dict):
     """ Prints a dictionary.
@@ -17,65 +28,64 @@ def print_dict(input_dict):
         None
     """
     for i, j in input_dict.items():
-        print i, j
+        print(i, j)
 
-def encode():
+def split_list(input_seq, split_size):
+    """ Splits a list into chunks of a specific size.
+
+    Args:
+        input_list: The list to split.
+        split_size: The size that each split should be.
+
+    Returns:
+        output_list: The list split into chunks
+    """
+    output_list = []
+    for i in range(0, len(input_seq), split_size):
+        output_list.append(input_seq[i:i + split_size])
+    # pprint.pprint(output_list)
+    return output_list
+
+def convert_to_binary(sequence):
+    key = ''
+    value = ''
+    sequence_length = len(sequence)
+    if sequence_length == BASES_PER_BYTE:
+        for base in sequence:
+            key += base
+            value += BYTE_CODE[base]
+    else:
+        missing_length = BASES_PER_BYTE - sequence_length
+        # print(BASES_PER_BYTE, sequence_length, missing_length)
+        for base in sequence:
+            key += base
+            value += BYTE_CODE[base]
+        for i in range(missing_length):
+            value += BYTE_CODE['I']
+    return int(value, base=2)
+
+def encode(input_seq, o_stream):
     """ Prints a byte.
 
-        A - 00
-        C - 01
-        G - 10
-        T - 11
-
-        byte = [base 2b] [base 2b] [base 2b] [delimiter 2b]
-        delimiter = {
-            00 - more
-            01 - 1 missing
-            11 - 2 missing
-        }
+        A - 000
+        C - 001
+        G - 010
+        T - 011
+        N - 100
+        I - 101
     """
 
-    base_dict = {}
-    bases = ['A', 'C', 'G', 'T']
-    byte_code = ['00', '01', '10', '11']
-
-    for i in range(4):
-        for j in range(4):
-            for k in range(4):
-                base_dict[bases[i] + bases[j] + bases[k]] \
-                    = byte_code[i] + byte_code[j] + byte_code[k]
-
-    byte_dict = {}
-    for i, j in base_dict.items():
-        byte_dict[j] = i
-
-    # print_dict(base_dict)
+    # print_dict(byte_code)
     # print_dict(byte_dict)
 
-    with open(sys.argv[1], 'r') as i_file:
-        with open(sys.argv[2], 'w') as o_file:
-            while True:
-                seq_stream = i_file.read(BASES_PER_BYTE)
-                if not seq_stream:
-                    break
-                else:
-                    partial_length = len(seq_stream)
-                    key = ''
-                    value = ''
-                    if partial_length == BASES_PER_BYTE:
-                        for base in seq_stream:
-                            key += base
-                        value = base_dict[key] + '00'
-                    else:
-                        key = seq_stream
-                        missing = BASES_PER_BYTE - partial_length
-                        for base in seq_stream:
-                            value += byte_code[bases.index(base)]
-                        for i in range(missing):
-                            value += '00'
-                        if missing == 1:
-                            value += '01'
-                        else:
-                            value += '11'
-                    print key, value
-                    o_file.write(chr(int(value[:8], base=2)))
+    # print(input_seq)
+    sequence_list = split_list(input_seq, BASES_PER_BYTE)
+
+    pool = multiprocessing.Pool()
+
+    for result in pool.imap(convert_to_binary, sequence_list):
+        o_stream.write(chr(result))
+    o_stream.write("\n")
+
+    pool.close()
+    pool.join()
